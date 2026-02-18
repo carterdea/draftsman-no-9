@@ -76,7 +76,7 @@ Default is plain Bun unless proven otherwise by operational complexity.
 - Webhook Receiver (Trello now, Slack later)
 - Repo Resolver (label → repo mapping + overrides)
 - Policy Engine (guardrails, limits, modes)
-- Job Queue (BullMQ)
+- Job Queues (BullMQ: `draftsman:jobs`, `draftsman:notifications`)
 - Audit Store (Postgres)
 - Admin Dashboard (audit visibility)
 
@@ -93,6 +93,7 @@ Default is plain Bun unless proven otherwise by operational complexity.
 ### Runner Strategy (High-Level)
 
 - BullMQ is used for durable queueing and retries.
+- Execution retries and notification retries run on separate queues.
 - The worker is an orchestrator, not the execution environment.
 - Each queued job runs in its own ephemeral container (`docker run --rm` locally).
 - BullMQ does not create containers directly; the worker dispatches the runner backend.
@@ -464,6 +465,9 @@ Recommended:
 Development:
 - Local Bun runtime
 - Redis + Postgres via Docker Compose
+- Copy `.env.example` to `.env` for shared non-secret defaults.
+- Keep real secrets in untracked `.env.local` (or secret manager in hosted environments).
+- Never rely on target-repo developer `.env` files being present in runner containers.
 
 Do not run production jobs on laptops or via ngrok.
 

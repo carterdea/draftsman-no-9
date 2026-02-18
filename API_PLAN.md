@@ -28,7 +28,7 @@ Ship a versioned `/v1` API centered on a durable `job` resource. Keep webhook in
 - How it will be built
 - Bun HTTP server with route modules
 - Postgres for jobs/audit/config
-- BullMQ for queue and retry
+- BullMQ split queues for retry-isolated processing (`draftsman:jobs`, `draftsman:notifications`)
 - Signature verification/API key auth per source
 - What’s different from current state
 - Parse-only webhook becomes enqueue + lifecycle tracking
@@ -53,7 +53,7 @@ Ship a versioned `/v1` API centered on a durable `job` resource. Keep webhook in
 
 ## Design
 
-All invocations map to one `job` lifecycle: `queued -> running -> waiting_for_input | succeeded | failed | canceled`.
+All invocations map to one `job` lifecycle: `queued -> running -> waiting_for_input | completed | failed | canceled | expired`.
 
 ```mermaid
 flowchart LR
@@ -63,9 +63,11 @@ flowchart LR
   A[Internal App] --> J
   W --> I{Idempotency Check}
   J --> I
-  I -->|new| Q[BullMQ enqueue]
+  I -->|new| Q[BullMQ jobs enqueue]
   I -->|duplicate| D[return existing job]
   Q --> R[Worker runner]
+  R --> N[[BullMQ notifications queue]]
+  N --> P[Notifier worker]
   R --> E[(Audit events)]
   R --> K[(Job state)]
   O[Operator] --> G[/GET /v1/jobs/:id/]
@@ -172,6 +174,7 @@ All auto-cancels generate audit events with source metadata.
 - [ ] Add `/v1` router and route modules
 - [ ] Add request auth middleware (Trello signature, Slack signature, bearer token)
 - [ ] Add idempotency key service (`source + external event id`)
+- [ ] Add BullMQ queue wiring for `draftsman:jobs` and `draftsman:notifications`
 - [ ] Add Postgres tables: `jobs`, `job_events`, `job_artifacts`, `job_cancellations`
 - [ ] Add shared response/error schema helpers
 

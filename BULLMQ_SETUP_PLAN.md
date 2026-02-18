@@ -8,11 +8,13 @@ Scope: get from webhook invocation to running jobs, with safe pause/resume when 
 - Execution state lives in Postgres, not only in BullMQ job payloads.
 - A waiting-for-human step does not hold a BullMQ worker slot.
 - When input is needed, runner exits cleanly and orchestration resumes from checkpoint after answer arrives.
-- One queue is enough for MVP (`draftsman:jobs`), split queues later only if throughput demands it.
+- Use split queues in MVP:
+- `draftsman:jobs` for orchestration actions (`start|resume|expire_waiting_input`)
+- `draftsman:notifications` for outbound Trello/Slack/MCP delivery
 
 ## Job Lifecycle (MVP)
 
-`queued -> running -> waiting_for_input -> resumed -> running -> completed|failed|canceled`
+`queued -> running -> waiting_for_input -> resumed -> running -> completed|failed|canceled|expired`
 
 Notes:
 - `waiting_for_input` is a DB state.
@@ -21,16 +23,30 @@ Notes:
 
 ## Queue Contract
 
-Queue name: `draftsman:jobs`
+Queue names:
+- `draftsman:jobs`
+- `draftsman:notifications`
 
-Payload:
+`draftsman:jobs` payload:
 
 ```json
 {
   "jobId": "uuid",
   "trigger": "trello|slack|mcp",
-  "action": "start|resume",
+  "action": "start|resume|expire_waiting_input",
   "resumeFromCheckpointId": "optional"
+}
+```
+
+`draftsman:notifications` payload:
+
+```json
+{
+  "jobId": "uuid",
+  "notificationType": "status_update|question_prompt|delivery_summary|ops_alert",
+  "target": "trello|slack|mcp",
+  "templateId": "string",
+  "payloadRef": "db pointer/id"
 }
 ```
 
@@ -81,7 +97,9 @@ Why this shape:
 
 - [ ] Add Redis/BullMQ connection factory (`apps/api` + `apps/worker` shared helper).
 - [ ] Add `draftsman:jobs` queue producer in API webhook path.
+- [ ] Add `draftsman:notifications` queue producer for outbound delivery work.
 - [ ] Add worker consumer that handles `start|resume`.
+- [ ] Add worker consumer for `draftsman:notifications`.
 - [ ] Add idempotent enqueue keyed by `source + external_event_id`.
 - [ ] Add queue event hooks (`completed`, `failed`, `stalled`) into audit events.
 - [ ] Add health endpoints for Redis + queue depth snapshots.
@@ -109,6 +127,7 @@ Why this shape:
 - [ ] Dispatch runner backend (`docker run --rm`) with job context.
 - [ ] Persist `NEEDS_INPUT` checkpoint and exit successfully.
 - [ ] On `resume`, load checkpoint + answer, continue execution.
+- [ ] Add isolated notifier worker so delivery retries do not re-run code execution.
 - [ ] Enforce hard timeouts and attempts at worker layer.
 
 ## Test Tasks
@@ -123,7 +142,7 @@ Why this shape:
 
 ## Rollout Steps
 
-- [ ] Phase 1: queue + worker skeleton + `start` action only.
+- [ ] Phase 1: queue + worker skeleton (`draftsman:jobs` + `draftsman:notifications`) + `start` action only.
 - [ ] Phase 2: DB status model + audit hooks.
 - [ ] Phase 3: `NEEDS_INPUT` pause + Slack/MCP resume flow.
 - [ ] Phase 4: runner checkpoint resume support + end-to-end tests.
@@ -132,6 +151,7 @@ Why this shape:
 
 - Any invocation source can enqueue a deterministic job.
 - Worker processes jobs with retries and bounded failure behavior.
+- Notification delivery retries are isolated from execution retries.
 - Human-input pauses are durable and do not tie up worker capacity.
 - Resume from Slack/MCP continues from a saved checkpoint.
 - Full lifecycle is auditable in DB and visible in dashboard/logs.

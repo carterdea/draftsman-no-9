@@ -19,7 +19,7 @@ Scope: storage model for audit logs, artifacts, and retention policy across Trel
 Canonical run record.
 
 - `id` (uuid pk)
-- `status` (`queued | running | waiting_for_input | succeeded | failed | canceled`)
+- `status` (`queued | running | waiting_for_input | resumed | completed | failed | canceled | expired`)
 - `mode` (`investigate | fix`)
 - `source` (`trello | slack | mcp | internal`)
 - `source_ref_id` (card id / message ts / mcp request id)
@@ -61,7 +61,7 @@ Artifact pointers and delivery outputs.
 - `id` (uuid pk)
 - `job_id` (fk -> `jobs.id`)
 - `kind` (`pr_url | screenshot | video | playwright_trace | delivery_comment | validation_log | diff_summary`)
-- `storage_provider` (`postgres_inline | s3 | gcs | local_fs`)
+- `storage_provider` (`r2 | local_fs`)
 - `uri` (url/path/object key)
 - `metadata_json` (jsonb)
 - `created_at` (timestamptz)
@@ -115,6 +115,7 @@ Recommended MVP action:
 - `validation.completed`
 - `human_input.requested`
 - `human_input.received`
+- `human_input.expired`
 - `delivery.comment_posted`
 - `delivery.attachment_uploaded`
 - `delivery.attachment_failed`
@@ -123,6 +124,7 @@ Recommended MVP action:
 - `job.completed`
 - `job.failed`
 - `job.canceled`
+- `job.expired`
 
 ## Do We Need Any Other DB Tables To Execute This?
 

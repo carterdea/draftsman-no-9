@@ -6,7 +6,7 @@ Scope: Docker only. Control plane always-on. Job runner ephemeral.
 
 - Control plane on always-on Mac now.
 - Same compose shape later on Linux host.
-- One queue system, not one queue per container.
+- One Redis system with split logical queues (`draftsman:jobs`, `draftsman:notifications`).
 - One ephemeral runner container per job.
 - Worker orchestrates jobs; job logic runs inside runner container.
 - Local-first backend is `docker run`; keep a runner interface so backend can swap later.
@@ -18,9 +18,11 @@ Scope: Docker only. Control plane always-on. Job runner ephemeral.
 - [ ] Add healthchecks for every long-lived service.
 - [ ] Set `restart: unless-stopped` on long-lived services.
 - [ ] Add `.env.example` with non-secret defaults.
+- [ ] Add `.env.local.example` for developer overrides; keep `.env*` secrets untracked.
 - [ ] Add `docker compose up -d` + recovery commands to `README.md`.
 - [ ] Add runner contract doc (`image`, env vars, workspace mount, exit codes).
 - [ ] Add runner interface in code (`start`, `status`, `cancel`, `logs`) with `DockerRunner` as v1.
+- [ ] Add env/secrets policy doc (source of truth, required keys, where secrets live per environment).
 - [ ] Add cleanup policy for dead containers/volumes/log growth.
 - [ ] Add Mac host hardening notes (disable sleep, auto-restart Docker Desktop).
 - [ ] Add explicit timeout + cancel behavior (`docker stop` then forced kill fallback).
@@ -36,7 +38,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     command: bun run start
-    env_file: .env
+    env_file:
+      - .env
+      - .env.local
     ports:
       - "3000:3000"
     depends_on:
@@ -56,7 +60,9 @@ services:
       context: .
       dockerfile: apps/worker/Dockerfile
     command: bun run start
-    env_file: .env
+    env_file:
+      - .env
+      - .env.local
     depends_on:
       redis:
         condition: service_healthy
@@ -71,7 +77,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--appendonly", "yes", "--save", "900", "1", "--save", "300", "10", "--save", "60", "10000", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -127,6 +133,7 @@ docker run --rm \
 ## Ops notes
 
 - Mac host: prevent sleep, enable Docker Desktop auto-start.
+- Keep AOF enabled by default for queue durability; use a local override to disable only for throwaway dev sessions.
 - Daily cleanup cron: prune old images/volumes with safe age filter.
 - Backups: Postgres volume snapshot schedule.
 - Logs: keep size caps to avoid disk fill.
