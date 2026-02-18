@@ -1,1 +1,370 @@
-# draftsman-no-9
+# Draftsman No. 9
+
+Draftsman No. 9 is an internal system that turns tickets into safe, auditable pull requests.
+
+It can be invoked from Trello (and later Slack or MCP) to investigate issues, fix bugs, run validation, and open PRs — with strong guardrails, deep audits, and explicit human checkpoints when needed.
+
+Draftsman No. 9 is **not** autonomous.  
+It is procedural, bounded, validation-gated, and opinionated.
+
+---
+
+## What Draftsman No. 9 Does
+
+When explicitly invoked, Draftsman No. 9 will:
+
+1. Resolve the correct repository for a ticket (usually via Trello label → repo mapping).
+2. Create an isolated, ephemeral execution environment.
+3. Optionally reproduce the issue (Playwright CLI).
+4. Apply a bounded “Ralph loop” to:
+   - analyze
+   - edit code
+   - run validation
+   - iterate (with hard limits)
+5. Open a pull request if — and only if — validation passes and guardrails are respected.
+6. Post results back to Trello / Slack.
+7. Record a complete audit trail of everything it did and why.
+
+It can also stop mid-execution and ask a human for clarification before proceeding.
+
+---
+
+## Goals
+
+- Deterministic “ticket → PR” workflow.
+- Safe-by-default execution.
+- Deep, reconstructable audits.
+- Validation-gated pull requests.
+- Easy swapping of AI agents (Codex CLI / Claude Code).
+- Clear human-in-the-loop escalation.
+- Reusable backend that can later be exposed via MCP.
+
+---
+
+## Non-Goals
+
+- Fully autonomous background fixing.
+- Auto-merging.
+- Multi-repo refactors.
+- Long-lived stateful workers.
+- Running with production credentials.
+- “Bot personality.”
+
+---
+
+## Stack (Opinionated)
+
+- **Runtime:** Bun
+- **API Framework:** Fastify (running on Bun)
+- **Database:** Postgres
+- **Queue:** BullMQ + Redis
+- **Execution:** Ephemeral runners (GitHub Actions recommended)
+- **Browser Repro:** Playwright CLI
+- **Agents:** Codex CLI and Claude Code (swappable)
+- **Future Interface:** MCP (for orchestrator tools like poke.com)
+
+Fastify is used intentionally for structure, schema validation, and observability.  
+“Just Bun” is possible, but Fastify saves time and mistakes.
+
+---
+
+## High-Level Architecture
+
+### Control Plane (Always-On)
+
+- Webhook Receiver (Trello now, Slack later)
+- Repo Resolver (label → repo mapping + overrides)
+- Policy Engine (guardrails, limits, modes)
+- Job Queue (BullMQ)
+- Audit Store (Postgres)
+- Admin Dashboard (audit visibility)
+
+### Execution Plane (Ephemeral per Job)
+
+- Fresh workspace checkout
+- Agent execution (Codex / Claude)
+- Ralph Loop Controller
+- Optional Playwright repro
+- Validation runner
+- PR creation
+- Result notification
+
+---
+
+## Invocation Modes
+
+### \`@draftsman investigate\`
+
+- No PR is created.
+- Draftsman No. 9 analyzes the repo and ticket.
+- Posts findings, suspected root cause, and recommended fix.
+- Used when context is incomplete or risk is unclear.
+
+### \`@draftsman fix\`
+
+- PR creation is allowed **only if** validation passes.
+- Uses a bounded Ralph loop.
+- Respects all guardrails.
+- Stops and asks questions if required.
+
+---
+
+## Repo Resolution
+
+Default behavior:
+- Trello label → repo mapping (stored in Postgres).
+
+Overrides:
+- Ticket contains \`Repo: owner/name\`
+- Custom “Repo” field (if configured)
+
+If repo resolution is ambiguous:
+- Draftsman No. 9 stops.
+- Posts a comment requesting clarification.
+- No code is touched.
+
+---
+
+## Ralph Loop (Bounded Iteration)
+
+The Ralph loop is only used in \`fix\` mode.
+
+Loop shape:
+
+1. Plan changes
+2. Apply edits
+3. Run validation (tests / lint / typecheck / build)
+4. Observe results
+5. Iterate (up to a hard limit)
+
+Hard limits enforced by the controller (not prompts):
+
+- Max iterations: 3–5
+- Max runtime: ~15 minutes
+- Max files changed
+- Max LOC delta
+- Stop on repeated identical failures
+- Stop if diff grows without convergence
+
+If limits are exceeded:
+- Execution stops
+- Draftsman No. 9 reports findings
+- Human input is required to continue
+
+---
+
+## Validation Gates
+
+A PR may only be opened if at least one validation signal passes:
+
+- Tests
+- Typecheck
+- Lint
+- Build
+
+Validation commands are defined per-repo via setup profiles.
+
+If a repo has no validation:
+- \`investigate\` is required, or
+- An explicit override flag must be used (discouraged).
+
+---
+
+## Playwright CLI Integration
+
+Playwright is optional and deterministic.
+
+Used when:
+- Ticket includes a URL + repro steps
+- Repo profile requires browser repro
+- Explicit \`--repro\` flag is provided
+
+Artifacts collected:
+- Trace
+- Screenshots / video
+- Console logs
+
+Artifacts are linked in:
+- Audit logs
+- Trello / Slack responses
+
+---
+
+## Guardrails (Non-Negotiable)
+
+### Job Creation
+- Explicit invocation only
+- Repo must resolve deterministically
+- Invoker must be allow-listed
+- Per-repo and global concurrency limits
+
+### Execution
+- Ephemeral workspace per job
+- Non-root execution
+- No Docker socket access
+- No production credentials
+- Scoped GitHub App credentials only
+- Optional network egress restrictions
+
+### Ralph Loop
+- Iteration caps
+- Diff size limits
+- Path allow-listing
+- No dependency upgrades unless explicitly allowed
+- No infra / auth / payments changes by default
+
+### PR Creation
+- Validation-gated
+- Small, reviewable diffs only
+- No auto-merge
+- Clear PR summary required
+
+---
+
+## Human-in-the-Loop: Asking Questions
+
+Draftsman No. 9 can enter a \`WAITING_FOR_INPUT\` state.
+
+Triggers include:
+- Ambiguous fixes
+- Risky changes
+- Missing acceptance criteria
+- Validation cannot run
+- Multiple reasonable approaches exist
+
+Questions are:
+- Explicit
+- Structured
+- Often multiple-choice
+
+Execution pauses without losing state.  
+Answers resume the job exactly where it stopped.
+
+---
+
+## Audits (First-Class Feature)
+
+Every job produces an immutable audit trail:
+
+- Invocation source + user
+- Ticket snapshot at invocation time
+- Repo resolution decision
+- Agent used + version
+- Ralph loop iterations
+- Commands executed
+- Validation outputs
+- Diff summary
+- Playwright artifacts
+- Final outcome (PR URL / blocked / needs-info / failed)
+
+Audits enable:
+- Trust
+- Debugging
+- Cost analysis
+- Postmortems
+- Re-runs
+
+---
+
+## Audit Dashboard
+
+A simple internal dashboard served from Fastify.
+
+Views:
+- Job list (status, repo, invoker, duration)
+- Job detail (timeline, logs, diffs, artifacts)
+- Repo mappings + setup profiles
+
+Implementation:
+- Server-rendered HTML initially
+- Protected behind internal auth / VPN
+
+This is intentionally boring and usable.
+
+---
+
+## Agent Abstraction
+
+Agents are adapters behind a stable interface.
+
+Supported:
+- Codex CLI
+- Claude Code
+
+Each agent receives:
+- Workspace path
+- Structured work order
+- Guardrails
+- Validation feedback on retries
+
+Agents never control:
+- Execution limits
+- Validation gating
+- PR creation rules
+
+This allows easy swapping without rewriting orchestration.
+
+---
+
+## MCP (Future)
+
+Draftsman No. 9 is designed so Trello, Slack, and MCP are just front-ends.
+
+Planned MCP endpoints:
+- \`create_job\`
+- \`get_job\`
+- \`list_jobs\`
+- \`resume_job\` (for human answers)
+
+MCP jobs are audited identically to webhook jobs.
+
+---
+
+## Repo Layout (Proposed)
+
+\```text
+apps/
+  api/          # Fastify API (Bun)
+  worker/       # BullMQ consumer + job orchestration
+
+packages/
+  core/         # policies, ralph loop, repo resolver
+  agents/       # codex + claude adapters
+  playwright/   # CLI wrappers + artifact handling
+  db/           # migrations + queries
+  mcp/          # MCP server (future)
+\```
+
+---
+
+## Deployment
+
+Recommended:
+- API + worker on Fly.io (or similar)
+- Managed Postgres
+- Managed Redis
+- Execution via GitHub Actions (ephemeral)
+
+Development:
+- Local Bun runtime
+- Redis + Postgres via Docker Compose
+
+Do not run production jobs on laptops or via ngrok.
+
+---
+
+## Design Principles
+
+- Explicit invocation
+- Deterministic repo resolution
+- Ephemeral execution
+- Validation before PRs
+- Guardrails enforced in code
+- Audits over opinions
+- Humans can always stop or redirect execution
+
+---
+
+## One-Line Summary
+
+**Draftsman No. 9 opens PRs the way a careful engineer would — with limits, logs, and the ability to stop and ask before doing something dumb.**
