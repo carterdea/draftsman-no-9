@@ -55,7 +55,8 @@ It can also stop mid-execution and ask a human for clarification before proceedi
 ## Stack (Opinionated)
 
 - **Runtime:** Bun
-- **API Framework:** Fastify (running on Bun)
+- **Testing:** Bun built-in test runner (`bun:test` via `bun test`)
+- **API Framework:** Plain Bun HTTP server
 - **Database:** Postgres
 - **Queue:** BullMQ + Redis
 - **Execution:** Ephemeral runners (GitHub Actions recommended)
@@ -63,8 +64,8 @@ It can also stop mid-execution and ask a human for clarification before proceedi
 - **Agents:** Codex CLI and Claude Code (swappable)
 - **Future Interface:** MCP (for orchestrator tools like poke.com)
 
-Fastify is used intentionally for structure, schema validation, and observability.  
-“Just Bun” is possible, but Fastify saves time and mistakes.
+Fastify is optional and not required for this system.  
+Default is plain Bun unless proven otherwise by operational complexity.
 
 ---
 
@@ -88,6 +89,14 @@ Fastify is used intentionally for structure, schema validation, and observabilit
 - Validation runner
 - PR creation
 - Result notification
+
+### Runner Strategy (High-Level)
+
+- BullMQ is used for durable queueing and retries.
+- The worker is an orchestrator, not the execution environment.
+- Each queued job runs in its own ephemeral container (`docker run --rm` locally).
+- BullMQ does not create containers directly; the worker dispatches the runner backend.
+- Bun workers are optional for intra-job parallelism, not queue durability.
 
 ---
 
@@ -167,6 +176,13 @@ Validation commands are defined per-repo via setup profiles.
 If a repo has no validation:
 - \`investigate\` is required, or
 - An explicit override flag must be used (discouraged).
+
+### Initial Test Scope (MVP)
+
+- `packages/core`: unit tests for invocation parsing and shared pure logic.
+- `apps/api`: route-level tests for health and webhook request handling.
+- `apps/worker`: unit tests for worker config resolution and deterministic status output.
+- Runner command: `bun test`.
 
 ---
 
@@ -268,7 +284,7 @@ Audits enable:
 
 ## Audit Dashboard
 
-A simple internal dashboard served from Fastify.
+A simple internal dashboard served from the Bun API.
 
 Views:
 - Job list (status, repo, invoker, duration)
@@ -306,6 +322,100 @@ This allows easy swapping without rewriting orchestration.
 
 ---
 
+## Instruction System (Per-Repo Skills + Prompt Profiles)
+
+Draftsman No. 9 should support layered instructions so behavior can change by repo without changing core code.
+
+Recommended instruction order (highest priority last):
+
+1. Global non-negotiable system rules (safety, guardrails, audit requirements)
+2. Invocation mode rules (`investigate` vs `fix`)
+3. Repo profile rules (validation, path constraints, risky-area restrictions)
+4. Ticket-scoped instructions (explicit acceptance criteria, constraints)
+5. Skill instructions (loaded only when selected)
+
+Later layers can specialize behavior, but cannot override non-negotiable guardrails enforced in code.
+
+### Skill Format
+
+Use a skill format compatible with Codex/Claude skill patterns:
+
+- `SKILL.md` with clear trigger conditions and workflow instructions
+- Optional `references/` docs loaded only when needed
+- Optional `scripts/` for deterministic repeated tasks
+
+Skill examples:
+- `rails-safe-migration`
+- `shopify-liquid-patterns`
+- `playwright-repro-triage`
+- `payments-change-hardening`
+
+### Skill Selection
+
+Skills can be attached by:
+- repo default profile
+- repo + label mapping
+- explicit ticket directive (for example: `Skills: rails-safe-migration,playwright-repro-triage`)
+
+Selection should be deterministic and logged in the audit trail:
+- which skills were considered
+- which were loaded
+- why each was selected or skipped
+
+### Skill Storage (Public Parent Repo, Private Skills Repo)
+
+Do not use a submodule for skills if the parent repo is public.
+
+Recommended pattern:
+- Keep skills in a nested directory (for example `./.draftsman-skills/`)
+- Initialize that directory as its own independent git repo
+- Ignore it in the parent repo via `.gitignore`
+
+Example setup:
+
+```bash
+mkdir -p .draftsman-skills
+cd .draftsman-skills
+git init
+```
+
+Parent `.gitignore` entry:
+
+```gitignore
+/.draftsman-skills/
+```
+
+If the parent repo already tracked files there, untrack once:
+
+```bash
+git rm -r --cached .draftsman-skills
+```
+
+Operationally:
+- Parent repo tracks only metadata (`skill_id`, `version`, `hash`)
+- Runtime loads skill content from `SKILLS_DIR` (default `./.draftsman-skills`)
+- Audits record `skill_id + version + hash`, not private skill contents
+
+### MVP Alternative (Prompt Profile Switch)
+
+If full skill loading is too heavy for v1, start with a simple per-repo prompt profile switch:
+
+- `profile = rails_api | shopify_theme | python_service | unknown`
+- `switch(profile)` applies a short, curated instruction block
+
+Then evolve to skill composition once workflows stabilize.
+
+### Suggested Rollout
+
+1. Implement repo prompt profiles first (fastest, least moving parts)
+2. Add explicit ticket-level skill overrides
+3. Add reusable skill registry with deterministic selection rules
+4. Add audit UI showing instruction stack per job
+
+This keeps v1 simple while preserving a clean path to richer skill-based behavior.
+
+---
+
 ## MCP (Future)
 
 Draftsman No. 9 is designed so Trello, Slack, and MCP are just front-ends.
@@ -324,7 +434,7 @@ MCP jobs are audited identically to webhook jobs.
 
 \```text
 apps/
-  api/          # Fastify API (Bun)
+  api/          # Bun API server
   worker/       # BullMQ consumer + job orchestration
 
 packages/

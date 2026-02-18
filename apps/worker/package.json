@@ -1,0 +1,13 @@
+{
+  "name": "@draftsman/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/worker.ts",
+    "start": "bun src/worker.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@draftsman/core": "workspace:*"
+  }
+}

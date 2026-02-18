@@ -1,0 +1,9 @@
+pre-commit:
+  commands:
+    biome-format:
+      glob: "*.{js,cjs,mjs,jsx,ts,tsx,json,jsonc}"
+      run: bunx biome format --write {staged_files}
+      stage_fixed: true
+    biome-lint:
+      glob: "*.{js,cjs,mjs,jsx,ts,tsx}"
+      run: bunx biome lint {staged_files}
