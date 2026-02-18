@@ -197,7 +197,8 @@ Used when:
 
 Artifacts collected:
 - Trace
-- Screenshots / video
+- Screenshot (recommended)
+- Video (recommended only when screenshot is insufficient, for example animation or timing-sensitive behavior)
 - Console logs
 
 Artifacts are linked in:
@@ -272,6 +273,11 @@ Every job produces an immutable audit trail:
 - Diff summary
 - Playwright artifacts
 - Final outcome (PR URL / blocked / needs-info / failed)
+
+Retention policy:
+- Raw audit events are retained for 90 days.
+- Job summaries and key outcome links are retained long-term.
+- Detailed storage/retention rules: `AUDIT_STORAGE_PLAN.md`.
 
 Audits enable:
 - Trust

@@ -128,6 +128,7 @@ Lifecycle query/control.
 - `GET /v1/jobs/:job_id/audit`
 - Query: `cursor`, `limit`, `kind`, `since`
 - Best practice: one append-only event stream endpoint with typed events + filters
+- Storage and retention policy is defined in `AUDIT_STORAGE_PLAN.md`.
 
 - `POST /v1/jobs/:job_id/resume`
 - Body: `{ "question_id": "q_123", "answer": { "type": "option", "value": "..." }, "answered_by": "carter@example.com" }`
@@ -163,7 +164,7 @@ All auto-cancels generate audit events with source metadata.
 ## Open Questions
 
 - [ ] Should auto-cancel on Slack delete apply to thread replies too, or only the original invocation message?
-- [ ] What retention period should we use for full audit event payloads vs compressed summaries?
+- [x] Retention period decision: keep raw audit event payloads for 90 days; keep job summaries and key outcome links long-term (see `AUDIT_STORAGE_PLAN.md`).
 
 ## Implementation Plan
 
@@ -171,7 +172,7 @@ All auto-cancels generate audit events with source metadata.
 - [ ] Add `/v1` router and route modules
 - [ ] Add request auth middleware (Trello signature, Slack signature, bearer token)
 - [ ] Add idempotency key service (`source + external event id`)
-- [ ] Add Postgres tables: `jobs`, `job_events`, `job_cancellations`
+- [ ] Add Postgres tables: `jobs`, `job_events`, `job_artifacts`, `job_cancellations`
 - [ ] Add shared response/error schema helpers
 
 ### - [ ] Phase 2: Core Implementation
