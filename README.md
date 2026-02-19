@@ -142,14 +142,28 @@ Loop shape:
 
 1. Plan changes
 2. Apply edits
-3. Run validation (tests / lint / typecheck / build)
-4. Observe results
-5. Iterate (up to a hard limit)
+3. Run fast validation (lint + typecheck)
+4. If fast checks fail → observe results, iterate immediately
+5. If fast checks pass → run full validation (test suite)
+6. Observe results
+7. Iterate (up to hard limits)
 
-Hard limits enforced by the controller (not prompts):
+### Tiered Validation
+
+Validation is split into two tiers, declared per-repo via setup profiles (see \`DOCKER_EXECUTION_PLAN.md\`).
+
+- **Fast tier** (every iteration): lint, typecheck — whatever the repo's \`validation.fast\` declares. Runs in seconds. Gives the agent quick feedback without burning test suite runs.
+- **Full tier** (gated, capped): test suite, build — whatever the repo's \`validation.full\` declares. Only runs when fast checks pass. Capped at 2–3 runs per job to limit compute.
+
+If the full tier fails, results are fed back to the agent as context for the next iteration. This is the CI feedback loop — the agent sees exactly what a human developer would see from a failed test run.
+
+### Hard Limits
+
+Enforced by the controller (not prompts):
 
 - Max iterations: 3–5
 - Max runtime: ~15 minutes
+- Max full validation runs: 2–3
 - Max files changed
 - Max LOC delta
 - Stop on repeated identical failures
@@ -312,11 +326,23 @@ Each agent receives:
 - Structured work order
 - Guardrails
 - Validation feedback on retries
+- Optional MCP servers (declared per-repo in setup profile)
 
 Agents never control:
 - Execution limits
 - Validation gating
 - PR creation rules
+
+### MCP Servers in Runner
+
+Runners can optionally expose MCP servers to agents during execution. These are declared per-repo in the setup profile, not globally.
+
+Currently planned:
+- **Context7** — library/framework documentation lookup. Useful when the agent needs API reference for unfamiliar dependencies.
+
+Not planned:
+- GitHub MCP (agent uses scoped GitHub tokens directly)
+- Sourcegraph code search MCP (agent works in a local checkout)
 
 This allows easy swapping without rewriting orchestration.
 
@@ -472,6 +498,7 @@ Do not run production jobs on laptops or via ngrok.
 - Guardrails enforced in code
 - Audits over opinions
 - Humans can always stop or redirect execution
+- Same tooling for humans and agents — agents use the same repo setup commands, validation commands, and developer tooling as human engineers
 
 ---
 
