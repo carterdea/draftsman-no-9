@@ -35,11 +35,12 @@ No new infrastructure. Uses the existing GitHub App, existing BullMQ queue, exis
 - Goal 1: real-time CI pass/fail tracking per PR, per repo, per invocation mode
 - Goal 2: identify which checks fail most often (tests? types? lint?) to guide validation improvements
 - Goal 3: lazy background capture of PR merge/close status for long-term metrics
-- Goal 4: audit trail entries for all outcome events
+- Goal 4: notify originating Trello card when CI fails (Slack as follow-on channel)
+- Goal 5: audit trail entries for all outcome events
 
 ### Non-Goals
 
-- Non-goal 1: triggering any action based on CI results (v1 is observe-only, no auto-retry)
+- Non-goal 1: auto-retry on CI failure (observe + notify only, no automated re-runs)
 - Non-goal 2: real-time PR merge/close tracking (not worth a webhook subscription for low-value data)
 - Non-goal 3: tracking CI on PRs Draftsman didn't create (out of scope)
 - Non-goal 4: dashboard UI (metrics are queryable; dashboard is a separate effort)
@@ -64,8 +65,18 @@ Match PR -> job_id                 Update pr_outcomes
 Write ci_results                   Re-enqueue with backoff
      |                                  (or stop if terminal)
      v                                     |
-     v                                     v
 Append job_event                   Append job_event
+     |
+     v
+CI failed?
+     |yes
+     v
+Enqueue notification
+(draftsman:notifications)
+     |
+     v
+Post to Trello card
+(Slack as follow-on)
 ```
 
 ### Key Components
@@ -133,7 +144,7 @@ CREATE TABLE ci_results (
   event_type    TEXT NOT NULL,  -- 'check_suite' | 'check_run'
   conclusion    TEXT NOT NULL,  -- 'success' | 'failure' | 'neutral' | 'cancelled' | etc
   details_url   TEXT,
-  raw_payload   JSONB,         -- full event for debugging, can drop after retention
+  raw_payload   JSONB,         -- full event payload; volume is low (~1K rows/month), keep indefinitely
   received_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -254,6 +265,43 @@ GROUP BY status;
 
 No dashboard needed initially. `psql` or a simple API endpoint can surface these.
 
+#### Component G: CI Failure Notifications
+
+When a `check_suite` webhook arrives with `conclusion: failure`, enqueue a notification on `draftsman:notifications` (the existing outbound queue from `BULLMQ_PAUSE_RESUME_PLAN.md`).
+
+The webhook handler does the enqueue — not the notification logic itself. Keeps the webhook response fast.
+
+```ts
+// In the check_suite webhook handler, after writing ci_results:
+if (conclusion === "failure") {
+  await notificationsQueue.add("ci-failure-notify", {
+    jobId,
+    repo,
+    prNumber,
+    prUrl,
+    failedChecks, // names of individual checks that failed, from check_runs
+    detailsUrl,   // link to the check suite or first failing check
+  });
+}
+```
+
+Notification worker posts a comment on the originating Trello card:
+
+```
+CI failed on PR #42.
+Failed checks: tests, typecheck
+Details: https://github.com/org/repo/actions/runs/123
+
+— Draftsman No. 9
+```
+
+Design notes:
+- Uses existing `draftsman:notifications` queue — same retry/dead-letter policy as other outbound notifications
+- Notification worker looks up the Trello card ID from the `jobs` table (already stored as part of the invocation source metadata)
+- Only fires on `check_suite` failure, not individual `check_run` failures — avoids spamming one comment per failing check
+- Idempotency: keyed by `(job_id, head_sha, check_suite_id)` to avoid duplicate comments if GitHub retries the webhook
+- **Slack follow-on**: same notification payload, different delivery adapter. Add when Slack invocation channel is implemented per `INVOCATION_TRIGGER_PLAN.md`
+
 ## Alternatives Considered
 
 | Alternative | Pros | Cons | Why Not Chosen |
@@ -266,9 +314,13 @@ No dashboard needed initially. `psql` or a simple API endpoint can surface these
 
 ## Open Questions
 
-- [ ] Should we store the full `raw_payload` JSONB from GitHub events, or strip it to essential fields? Full payload is useful for debugging but grows storage. Could add a retention policy (drop raw after 30 days).
-- [ ] If CI fails, should we post a comment back to the originating Trello card / Slack thread? Useful but adds scope — could be a fast follow.
 - [ ] Should the `check-pr-outcome` polling job live on `draftsman:jobs` or get its own lightweight queue? Low volume suggests sharing the main queue is fine, but it's a different concern than core orchestration.
+- [ ] Should CI failure notification include a summary of which files/tests failed, or just link to the GitHub details page? More detail is useful but requires parsing check_run annotations.
+
+### Resolved
+
+- ~~Raw payload retention~~ — keep full JSONB indefinitely. At triple-digit PRs/month, `ci_results` grows single-digit MB/month. Not worth a retention policy.
+- ~~CI failure notification~~ — yes, post to originating Trello card on `check_suite` failure. Slack as follow-on when that channel is implemented.
 
 ## Implementation Plan
 
@@ -279,13 +331,15 @@ No dashboard needed initially. `psql` or a simple API endpoint can surface these
 - [ ] Add `pr_opened` audit event emission in worker PR creation path
 - [ ] Enqueue first `check-pr-outcome` delayed job on PR creation
 
-### - [ ] Phase 2: CI Webhook
+### - [ ] Phase 2: CI Webhook + Failure Notification
 
 - [ ] Add `POST /webhooks/github` route to API server
 - [ ] Implement GitHub HMAC-SHA256 signature verification
 - [ ] Implement `check_suite` event handler (aggregate CI status)
 - [ ] Implement `check_run` event handler (per-check granularity)
 - [ ] Add `ci_result_received` and `ci_suite_completed` audit events
+- [ ] On `check_suite` failure, enqueue CI failure notification on `draftsman:notifications`
+- [ ] Implement Trello comment delivery for CI failure notifications
 - [ ] Configure GitHub App webhook subscription for check events
 
 ### - [ ] Phase 3: Lazy PR Polling
@@ -302,6 +356,8 @@ No dashboard needed initially. `psql` or a simple API endpoint can surface these
 - [ ] Unit: PR-to-job matching (found, not found, duplicate events)
 - [ ] Unit: polling backoff schedule and re-enqueue logic
 - [ ] Unit: idempotent CI result insertion (same check_run delivered twice)
+- [ ] Unit: CI failure enqueues notification; CI success does not
+- [ ] Unit: notification idempotency (duplicate webhook doesn't duplicate Trello comment)
 - [ ] Integration: webhook -> ci_results -> job_events pipeline
 - [ ] Integration: PR creation -> delayed poll -> status resolution
 - [ ] Metric queries return expected results from test data
@@ -319,8 +375,7 @@ No dashboard needed initially. `psql` or a simple API endpoint can surface these
 ---
 
 Open questions to discuss:
-1. Raw payload retention policy — keep full JSONB or strip after N days?
-2. Should CI failure trigger a notification back to the originating channel?
-3. Polling queue placement — share `draftsman:jobs` or dedicate a queue?
+1. Polling queue placement — share `draftsman:jobs` or dedicate a queue?
+2. CI failure comment detail level — just link, or parse check_run annotations?
 
 Ready to refine any section or proceed to implementation?
