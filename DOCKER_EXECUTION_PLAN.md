@@ -110,13 +110,23 @@ volumes:
 
 ## Runner image strategy (layered)
 
-One image. Shared cache volumes. No per-repo images.
+A small set of ecosystem base images — not per-repo, but per-ecosystem. Shared cache volumes. Typically 2–3 images total.
 
-- **Layer 1 — Base runner image:** git, bun, node, python, uv, common CLIs (curl, jq). Rebuilt weekly or on dependency bumps.
+| Image tag | Covers | Includes |
+|---|---|---|
+| `draftsman-runner:node` | Node.js + Bun projects | node, bun, npm, common CLIs (git, curl, jq) |
+| `draftsman-runner:ruby` | Rails + Shopify apps/themes | ruby, bundler, node (for asset pipeline), Shopify CLI, common CLIs |
+| `draftsman-runner:python` | Python services | python, uv, pip, common CLIs |
+
+Each image is rebuilt weekly or on toolchain bumps. The per-repo setup profile declares which image to use via `runner_image`.
+
+Layering within each image:
+
+- **Layer 1 — Ecosystem base:** toolchain + common CLIs. Stable, changes infrequently.
 - **Layer 2 — Dependency cache volumes:** mounted at runtime, not baked in. Shared across jobs, accumulate naturally. See section below.
 - **Layer 3 — Repo checkout:** ephemeral per job. `git clone` + checkout exact SHA into `/workspace`.
 
-This avoids per-repo image builds while still getting fast installs from warm caches.
+This avoids per-repo image builds while keeping images focused and maintainable. Adding a new ecosystem is just a new Dockerfile, not a change to existing ones.
 
 ## Dependency cache volumes
 
@@ -126,6 +136,7 @@ Package manager caches are host-side Docker volumes, mounted read-write into eve
 |---|---|---|
 | bun | `/.bun/install/cache` | `draftsman_bun_cache` |
 | npm/yarn | `/.npm` | `draftsman_npm_cache` |
+| bundler | `/usr/local/bundle/cache` | `draftsman_bundler_cache` |
 | uv | `/.cache/uv` | `draftsman_uv_cache` |
 | pip | `/.cache/pip` | `draftsman_pip_cache` |
 
