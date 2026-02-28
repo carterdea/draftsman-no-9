@@ -266,7 +266,7 @@ CREATE TABLE repo_profiles (
   repo_owner            text NOT NULL,
   repo_name             text NOT NULL,
   profile_type          text NOT NULL DEFAULT 'unknown',
-  validation_commands   jsonb NOT NULL DEFAULT '[]',
+  validation_commands   jsonb NOT NULL DEFAULT '[]',  -- array of { name, command, required }
   path_allowlist        jsonb,
   risky_paths           jsonb,
   default_skills        jsonb NOT NULL DEFAULT '[]',
@@ -488,12 +488,18 @@ export interface RepoMappingRow {
   updated_at: Date;
 }
 
+export interface ValidationCommand {
+  name: string;
+  command: string;
+  required: boolean;
+}
+
 export interface RepoProfileRow {
   id: string;
   repo_owner: string;
   repo_name: string;
   profile_type: string;
-  validation_commands: unknown[];
+  validation_commands: ValidationCommand[];
   path_allowlist: string[] | null;
   risky_paths: string[] | null;
   default_skills: string[];
@@ -635,11 +641,11 @@ Rules:
 
 Test database: Use the same `docker-compose.yml` Postgres instance. Tests connect to a dedicated `draftsman_test` database. Add a `bun run test:db` script that ensures the test database exists before running.
 
-## Open Questions
+## Resolved Questions
 
-- [ ] Should `job_events.payload` have a max size limit enforced at the application layer to prevent unbounded audit row size? (Likely yes — truncate command output to ~10KB.)
-- [ ] Should `repo_profiles.validation_commands` be a JSONB array of command strings, or a JSONB array of objects with `name`, `command`, `required` fields? (Leaning toward objects for future flexibility.)
-- [ ] Do we need a `job_cancellations` table as mentioned in `API_PLAN.md`, or is the `job_canceled` event in `job_events` sufficient? (Leaning toward events-only — a separate table adds no information the event doesn't already capture.)
+- **`job_events.payload` size limit:** Yes — cap at 10KB at the application layer. Truncate with `"truncated": true` in the payload. Full output can go to log files or artifact storage if needed later. Primary risk is `command_executed` events with large test/lint stdout.
+- **`repo_profiles.validation_commands` shape:** Array of objects: `{ "name": string, "command": string, "required": boolean }`. Each repo gets its own commands (Shopify theme repos use `shopify theme check`, Rails repos use `bundle exec rspec`, Bun repos use `bun test`, etc.). The `required` field controls whether failure is a hard gate (blocks PR) or a warning (noted in audit trail).
+- **`job_cancellations` table:** Removed. The `job_canceled` event in `job_events` captures `reason`, `requested_by`, and `source` in its JSONB payload. The `canceled_at` timestamp lives on the `jobs` row. No separate table needed.
 
 ## Done Looks Like
 
