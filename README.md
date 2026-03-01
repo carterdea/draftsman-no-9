@@ -150,7 +150,7 @@ Loop shape:
 
 ### Tiered Validation
 
-Validation is split into two tiers, declared per-repo via setup profiles (see \`DOCKER_EXECUTION_PLAN.md\`).
+Validation is split into two tiers, declared per-repo via repo profiles (see \`DOCKER_EXECUTION_PLAN.md\`).
 
 - **Fast tier** (every iteration): lint, typecheck — whatever the repo's \`validation.fast\` declares. Runs in seconds. Gives the agent quick feedback without burning test suite runs.
 - **Full tier** (gated, capped): test suite, build — whatever the repo's \`validation.full\` declares. Only runs when fast checks pass. Capped at 2–3 runs per job to limit compute.
@@ -185,7 +185,7 @@ A PR may only be opened if at least one validation signal passes:
 - Lint
 - Build
 
-Validation commands are defined per-repo via setup profiles.
+Validation commands are defined per-repo via repo profiles.
 
 If a repo has no validation:
 - \`investigate\` is required, or
@@ -303,7 +303,7 @@ A simple internal dashboard served from the Bun API.
 Views:
 - Job list (status, repo, invoker, duration)
 - Job detail (timeline, logs, diffs, artifacts)
-- Repo mappings + setup profiles
+- Repo mappings + repo profiles
 
 Implementation:
 - Server-rendered HTML initially
@@ -326,7 +326,7 @@ Each agent receives:
 - Structured work order
 - Guardrails
 - Validation feedback on retries
-- Optional MCP servers (declared per-repo in setup profile)
+- Optional MCP servers (declared per-repo in repo profile)
 
 Agents never control:
 - Execution limits
@@ -335,7 +335,7 @@ Agents never control:
 
 ### MCP Servers in Runner
 
-Runners can optionally expose MCP servers to agents during execution. These are declared per-repo in the setup profile, not globally.
+Runners can optionally expose MCP servers to agents during execution. These are declared per-repo in the repo profile, not globally.
 
 Currently planned:
 - **Context7** — library/framework documentation lookup. Useful when the agent needs API reference for unfamiliar dependencies.
@@ -475,15 +475,16 @@ packages/
 
 ## Deployment
 
-Recommended:
+Production (target):
 - API + worker on Fly.io (or similar)
 - Managed Postgres
 - Managed Redis
-- Execution via GitHub Actions (ephemeral)
+- Execution via GitHub Actions (ephemeral runners)
 
-Development:
+Local development:
 - Local Bun runtime
 - Redis + Postgres via Docker Compose
+- Job execution via `docker run --rm` (ephemeral containers per job, see `DOCKER_EXECUTION_PLAN.md`)
 
 Do not run production jobs on laptops or via ngrok.
 

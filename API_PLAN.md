@@ -53,7 +53,11 @@ Ship a versioned `/v1` API centered on a durable `job` resource. Keep webhook in
 
 ## Design
 
-All invocations map to one `job` lifecycle: `queued -> running -> waiting_for_input | succeeded | failed | canceled`.
+All invocations map to one `job` lifecycle (see `DATABASE_PLAN.md` for canonical state machine):
+
+`queued -> running -> waiting_for_input -> resumed -> running -> completed | failed | canceled | expired`
+
+Terminal states: `completed`, `failed`, `canceled`, `expired`. The `expired` state is used when a human question goes unanswered for 24h (see `BULLMQ_PAUSE_RESUME_PLAN.md`).
 
 ```mermaid
 flowchart LR
@@ -171,7 +175,7 @@ All auto-cancels generate audit events with source metadata.
 - [ ] Add `/v1` router and route modules
 - [ ] Add request auth middleware (Trello signature, Slack signature, bearer token)
 - [ ] Add idempotency key service (`source + external event id`)
-- [ ] Add Postgres tables: `jobs`, `job_events`, `job_cancellations`
+- [ ] Add Postgres tables: `jobs`, `job_events` (see `DATABASE_PLAN.md` for canonical schema; cancellation data is stored as a `job_canceled` event in `job_events`, no separate table needed)
 - [ ] Add shared response/error schema helpers
 
 ### - [ ] Phase 2: Core Implementation
@@ -196,4 +200,4 @@ All auto-cancels generate audit events with source metadata.
 - Current API: `apps/api/src/server.ts`
 - Current API tests: `apps/api/src/server.test.ts`
 - Invocation types: `packages/core/src/index.ts`
-- Related plans: `TRELLO_DELIVERY_PLAN.md`, `INVOCATION_TRIGGER_PLAN.md`, `BULLMQ_SETUP_PLAN.md`, `DOCKER_EXECUTION_PLAN.md`
+- Related plans: `TRELLO_DELIVERY_PLAN.md`, `INVOCATION_TRIGGER_PLAN.md`, `BULLMQ_PAUSE_RESUME_PLAN.md` (canonical queue design), `BULLMQ_SETUP_PLAN.md` (foundational notes), `DOCKER_EXECUTION_PLAN.md`, `DATABASE_PLAN.md` (canonical schema)

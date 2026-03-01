@@ -79,11 +79,13 @@ Start here:
 
 Then load deeper docs by task:
 - `API_PLAN.md` for API design direction
-- `BULLMQ_SETUP_PLAN.md` for queue setup
-- `BULLMQ_PAUSE_RESUME_PLAN.md` for waiting/resume flow
+- `DATABASE_PLAN.md` for canonical database schema, migrations, and query patterns
+- `BULLMQ_SETUP_PLAN.md` for queue setup (foundational notes)
+- `BULLMQ_PAUSE_RESUME_PLAN.md` for waiting/resume flow (canonical queue design)
 - `INVOCATION_TRIGGER_PLAN.md` for invocation behavior
 - `DOCKER_EXECUTION_PLAN.md` for execution environment strategy
 - `TRELLO_DELIVERY_PLAN.md` for Trello integration details
+- `docs/PR_OUTCOME_TRACKING_PLAN.md` for CI result tracking and PR outcome polling
 
 ## PR / Delivery Expectations
 When preparing output for review:

@@ -266,6 +266,8 @@ CREATE TABLE repo_profiles (
   repo_owner            text NOT NULL,
   repo_name             text NOT NULL,
   profile_type          text NOT NULL DEFAULT 'unknown',
+
+  -- validation & guardrails
   validation_commands   jsonb NOT NULL DEFAULT '[]',  -- array of { name, command, required }
   path_allowlist        jsonb,
   risky_paths           jsonb,
@@ -274,6 +276,14 @@ CREATE TABLE repo_profiles (
   max_runtime_seconds   int NOT NULL DEFAULT 900,
   max_files_changed     int NOT NULL DEFAULT 20,
   max_loc_delta         int NOT NULL DEFAULT 500,
+
+  -- docker / runner config (see DOCKER_EXECUTION_PLAN.md)
+  dockerfile            text,                          -- path in repo, NULL = generate
+  generated_dockerfile  text,                          -- stored generated Dockerfile content
+  dockerfile_hash       text,                          -- hash for image cache key
+  dependency_manager    text NOT NULL DEFAULT 'bun',   -- 'bun' | 'npm' | 'bundler' | 'uv' | 'pip'
+  setup_command         text NOT NULL DEFAULT 'bun install', -- runs once after checkout
+
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
 
@@ -296,6 +306,10 @@ CREATE TABLE trello_board_configs (
   updated_at                timestamptz NOT NULL DEFAULT now()
 );
 ```
+
+### Tables: `pr_outcomes` and `ci_results`
+
+PR outcome tracking and CI result storage. Schema defined in `docs/PR_OUTCOME_TRACKING_PLAN.md`. These tables follow the same naming conventions as above (`id` as PK, `job_id REFERENCES jobs(id)`) and should be added as a follow-on migration after the initial schema.
 
 ### Table: `_migrations`
 
@@ -507,6 +521,12 @@ export interface RepoProfileRow {
   max_runtime_seconds: number;
   max_files_changed: number;
   max_loc_delta: number;
+  // docker / runner config (see DOCKER_EXECUTION_PLAN.md)
+  dockerfile: string | null;
+  generated_dockerfile: string | null;
+  dockerfile_hash: string | null;
+  dependency_manager: string;
+  setup_command: string;
   created_at: Date;
   updated_at: Date;
 }
