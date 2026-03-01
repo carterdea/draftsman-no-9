@@ -1,5 +1,12 @@
 # BullMQ Setup Plan
 
+> **Note:** This document captures foundational design decisions and early working notes for the BullMQ integration. The canonical, detailed design lives in **`BULLMQ_PAUSE_RESUME_PLAN.md`**, which supersedes this document where they overlap. Key differences resolved in favor of the canonical plan:
+> - **Queue count:** Two queues (`draftsman:jobs` + `draftsman:notifications`), not one.
+> - **Job lifecycle:** Includes `expired` as a terminal state.
+> - **Action types:** `start`, `resume`, and `expire_waiting_input`.
+> - **Redis config:** AOF enabled with `noeviction` policy (see `DOCKER_EXECUTION_PLAN.md`).
+> - **DB schema:** See `DATABASE_PLAN.md` for canonical table definitions.
+
 Scope: get from webhook invocation to running jobs, with safe pause/resume when human input is required.
 
 ## Decisions
@@ -8,11 +15,11 @@ Scope: get from webhook invocation to running jobs, with safe pause/resume when 
 - Execution state lives in Postgres, not only in BullMQ job payloads.
 - A waiting-for-human step does not hold a BullMQ worker slot.
 - When input is needed, runner exits cleanly and orchestration resumes from checkpoint after answer arrives.
-- One queue is enough for MVP (`draftsman:jobs`), split queues later only if throughput demands it.
+- Two queues: `draftsman:jobs` for orchestration and `draftsman:notifications` for outbound Trello/Slack/MCP sends (see `BULLMQ_PAUSE_RESUME_PLAN.md` for rationale — notification latency must not block execution throughput).
 
 ## Job Lifecycle (MVP)
 
-`queued -> running -> waiting_for_input -> resumed -> running -> completed|failed|canceled`
+`queued -> running -> waiting_for_input -> resumed -> running -> completed|failed|canceled|expired`
 
 Notes:
 - `waiting_for_input` is a DB state.

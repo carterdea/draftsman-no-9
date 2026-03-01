@@ -134,9 +134,10 @@ Webhook handler matches on `(repo, pr_number)` — fast index lookup, no parsing
 #### Component C: CI Results Storage
 
 ```sql
+-- Follows DATABASE_PLAN.md naming conventions: PK is `id`, FK is `job_id REFERENCES jobs(id)`
 CREATE TABLE ci_results (
-  ci_result_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id        UUID NOT NULL REFERENCES jobs(job_id),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id        UUID NOT NULL REFERENCES jobs(id),
   pr_number     INT NOT NULL,
   repo          TEXT NOT NULL,
   head_sha      TEXT NOT NULL,
@@ -203,9 +204,10 @@ async function handleCheckPrOutcome(data: PrOutcomePayload) {
 Total API calls per PR: at most 4. Negligible load.
 
 ```sql
+-- Follows DATABASE_PLAN.md naming conventions: PK is `id`, FK is `job_id REFERENCES jobs(id)`
 CREATE TABLE pr_outcomes (
-  pr_outcome_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  job_id        UUID NOT NULL REFERENCES jobs(job_id),
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id        UUID NOT NULL REFERENCES jobs(id),
   repo          TEXT NOT NULL,
   pr_number     INT NOT NULL,
   pr_url        TEXT NOT NULL,
@@ -429,7 +431,8 @@ None currently.
 - GitHub `check_suite` event shape: includes `conclusion`, `head_sha`, `pull_requests[]`
 - GitHub `check_run` event shape: includes `name`, `conclusion`, `details_url`, `check_suite.id`
 - Existing webhook pattern: `API_PLAN.md` Component A (Trello signature verification)
-- Queue setup: `BULLMQ_SETUP_PLAN.md` and `BULLMQ_PAUSE_RESUME_PLAN.md`
+- Queue setup: `BULLMQ_PAUSE_RESUME_PLAN.md` (canonical), `BULLMQ_SETUP_PLAN.md` (foundational notes)
+- Database schema: `DATABASE_PLAN.md` (canonical schema and naming conventions)
 - Current API: `apps/api/src/server.ts`
 - Current worker: `apps/worker/src/worker.ts`
 
