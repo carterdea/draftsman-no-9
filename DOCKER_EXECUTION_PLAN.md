@@ -17,7 +17,7 @@ Scope: Docker only. Control plane always-on. Job runner ephemeral.
 - [ ] Create `docker-compose.yml` for `api`, `worker`, `redis`, `postgres`.
 - [ ] Add healthchecks for every long-lived service.
 - [ ] Set `restart: unless-stopped` on long-lived services.
-- [ ] Add `.env.example` with non-secret defaults.
+- [ ] Add `.env.example` with non-secret defaults (see `SECRETS_PLAN.md` for full variable list).
 - [ ] Add `docker compose up -d` + recovery commands to `README.md`.
 - [ ] Add runner contract doc (`image`, env vars, workspace mount, exit codes).
 - [ ] Add runner interface in code (`start`, `status`, `cancel`, `logs`) with `DockerRunner` as v1.
@@ -229,7 +229,7 @@ Profiles are stored in Postgres (`repo_profiles` table) and editable via the adm
 - Worker resolves the runner image for the repo (build from Dockerfile if needed, or use cached image).
 - Worker launches per-job container with `--rm`.
 - Mount temp workspace + relevant dependency cache volume(s).
-- Env: scoped GitHub token, job id, repo, commit SHA.
+- Env: scoped GitHub token, job id, repo, commit SHA, plus per-repo runner secrets via `--env-file` (see `SECRETS_PLAN.md`).
 - No prod creds. No docker socket in runner.
 - Kill on timeout. Upload logs/artifacts. Exit.
 - Job flow in runner: clone repo → checkout exact SHA → restore dependency cache → run setup → run bounded Ralph loop (with tiered validation) → return structured result.
@@ -263,9 +263,11 @@ docker run --rm \
   -e GITHUB_TOKEN \
   -e REPO \
   -e COMMIT_SHA \
+  --env-file "$HOME/.draftsman/envs/${REPO_OWNER}--${REPO_NAME}.env" \
   -v /tmp/draftsman/$JOB_ID:/workspace \
   -v draftsman_bun_cache:/.bun/install/cache \
   $IMAGE_TAG
+# Note: --env-file is omitted if the file does not exist. See SECRETS_PLAN.md.
 ```
 
 ## Ops notes

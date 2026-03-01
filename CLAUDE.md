@@ -84,6 +84,7 @@ Then load deeper docs by task:
 - `BULLMQ_PAUSE_RESUME_PLAN.md` for waiting/resume flow (canonical queue design)
 - `INVOCATION_TRIGGER_PLAN.md` for invocation behavior
 - `DOCKER_EXECUTION_PLAN.md` for execution environment strategy
+- `SECRETS_PLAN.md` for infrastructure and runner secrets management
 - `TRELLO_DELIVERY_PLAN.md` for Trello integration details
 - `docs/PR_OUTCOME_TRACKING_PLAN.md` for CI result tracking and PR outcome polling
 
