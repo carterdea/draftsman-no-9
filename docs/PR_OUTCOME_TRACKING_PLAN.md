@@ -265,7 +265,7 @@ GROUP BY status;
 
 No dashboard needed initially. `psql` or a simple API endpoint can surface these.
 
-#### Component G: CI Failure Notifications
+#### Component G: CI Failure Notifications (with Annotations)
 
 When a `check_suite` webhook arrives with `conclusion: failure`, enqueue a notification on `draftsman:notifications` (the existing outbound queue from `BULLMQ_PAUSE_RESUME_PLAN.md`).
 
@@ -279,23 +279,81 @@ if (conclusion === "failure") {
     repo,
     prNumber,
     prUrl,
-    failedChecks, // names of individual checks that failed, from check_runs
-    detailsUrl,   // link to the check suite or first failing check
+    checkSuiteId,
+    detailsUrl,
   });
 }
 ```
 
-Notification worker posts a comment on the originating Trello card:
+The notification worker (not the webhook handler) fetches annotations before composing the comment:
+
+```ts
+async function handleCiFailureNotify(data: CiFailurePayload) {
+  // 1. Get failing check runs for this suite
+  const checkRuns = await github.checks.listForSuite({
+    owner, repo,
+    check_suite_id: data.checkSuiteId,
+    filter: "latest",
+  });
+
+  const failed = checkRuns.data.check_runs.filter(
+    (cr) => cr.conclusion === "failure",
+  );
+
+  // 2. Fetch annotations for each failing check run
+  const sections: string[] = [];
+  for (const cr of failed) {
+    const annotations = await github.checks.listAnnotations({
+      owner, repo,
+      check_run_id: cr.id,
+    });
+    const lines = annotations.data
+      .slice(0, 5) // cap per check to avoid wall of text
+      .map((a) => `    ${a.path}:${a.start_line} — ${a.message}`);
+    const header = lines.length > 0
+      ? `  - ${cr.name} (${annotations.data.length} failures)`
+      : `  - ${cr.name}`;
+    sections.push([header, ...lines].join("\n"));
+  }
+
+  // 3. Compose and post Trello comment
+  const comment = [
+    `CI failed on PR #${data.prNumber}.`,
+    "",
+    "Failed checks:",
+    ...sections,
+    "",
+    `Details: ${data.detailsUrl}`,
+    "",
+    "— Draftsman No. 9",
+  ].join("\n");
+
+  await trello.postComment(cardId, comment);
+}
+```
+
+Example Trello comment:
 
 ```
 CI failed on PR #42.
-Failed checks: tests, typecheck
+
+Failed checks:
+  - tests (3 failures)
+    src/utils/parse.ts:42 — expected 'fix' but got null
+    src/utils/parse.ts:87 — timeout after 5000ms
+    src/api/handler.ts:15 — missing required field 'repo'
+  - typecheck (1 failure)
+    src/worker/runner.ts:23 — Type 'string' is not assignable to type 'InvocationMode'
+
 Details: https://github.com/org/repo/actions/runs/123
 
 — Draftsman No. 9
 ```
 
 Design notes:
+- Annotation fetching happens in the notification worker, not the webhook handler — keeps webhook response fast
+- Annotations are capped at 5 per check run to avoid wall-of-text comments
+- If a check run has no annotations (some CI systems don't produce them), falls back to just the check name
 - Uses existing `draftsman:notifications` queue — same retry/dead-letter policy as other outbound notifications
 - Notification worker looks up the Trello card ID from the `jobs` table (already stored as part of the invocation source metadata)
 - Only fires on `check_suite` failure, not individual `check_run` failures — avoids spamming one comment per failing check
@@ -314,13 +372,14 @@ Design notes:
 
 ## Open Questions
 
-- [ ] Should the `check-pr-outcome` polling job live on `draftsman:jobs` or get its own lightweight queue? Low volume suggests sharing the main queue is fine, but it's a different concern than core orchestration.
-- [ ] Should CI failure notification include a summary of which files/tests failed, or just link to the GitHub details page? More detail is useful but requires parsing check_run annotations.
+None currently.
 
 ### Resolved
 
 - ~~Raw payload retention~~ — keep full JSONB indefinitely. At triple-digit PRs/month, `ci_results` grows single-digit MB/month. Not worth a retention policy.
 - ~~CI failure notification~~ — yes, post to originating Trello card on `check_suite` failure. Slack as follow-on when that channel is implemented.
+- ~~Polling queue placement~~ — share `draftsman:jobs`. At most 4 delayed jobs per PR over 4 days. Even at 200 PRs/month that's ~800 jobs/month — invisible next to core orchestration. Not worth a dedicated queue.
+- ~~CI failure comment detail~~ — include check_run annotations (file, line, message). Notification worker fetches annotations via GitHub API before composing the Trello comment. One extra API call per failure, and the notification queue is I/O-heavy by design.
 
 ## Implementation Plan
 
@@ -358,7 +417,9 @@ Design notes:
 - [ ] Unit: idempotent CI result insertion (same check_run delivered twice)
 - [ ] Unit: CI failure enqueues notification; CI success does not
 - [ ] Unit: notification idempotency (duplicate webhook doesn't duplicate Trello comment)
+- [ ] Unit: annotation fetching caps at 5 per check, graceful fallback when no annotations exist
 - [ ] Integration: webhook -> ci_results -> job_events pipeline
+- [ ] Integration: check_suite failure -> notification -> Trello comment with annotations
 - [ ] Integration: PR creation -> delayed poll -> status resolution
 - [ ] Metric queries return expected results from test data
 
@@ -374,8 +435,4 @@ Design notes:
 
 ---
 
-Open questions to discuss:
-1. Polling queue placement — share `draftsman:jobs` or dedicate a queue?
-2. CI failure comment detail level — just link, or parse check_run annotations?
-
-Ready to refine any section or proceed to implementation?
+All open questions resolved. Ready to refine any section or proceed to implementation?
