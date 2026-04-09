@@ -17,16 +17,18 @@ This system is not autonomous and should not behave like an unconstrained coding
 Current repo scope is a Bun monorepo with:
 - `apps/api`: control-plane HTTP server
 - `apps/worker`: queue consumer and orchestration entrypoints
-- `packages/core`: shared policies, invocation parsing, deterministic logic
+- `apps/runner`: ephemeral execution container and pipeline CLI entrypoint
+- `packages/core`: shared policies, invocation parsing, pipeline controller, Ralph primitive, canonical model
 - `packages/db`: DB access layer scaffolding
 
 Target behavior (from `README.md`):
-- Explicit invocation (`investigate` or `fix`)
+- Explicit invocation (`investigate`, `fix`, or `execute <plan>`)
 - Deterministic repo resolution
 - Optional reproduction step
-- Bounded edit/validate iteration loop
+- Linear multi-stage pipeline with structured handoff between stages
+- Ralph bounded convergence primitive used by stages that need iteration
 - PR only after validation passes and guardrails are respected
-- Full audit trail
+- Full audit trail including per-stage prompt hashes
 
 ## Non-Negotiable Product Guardrails
 Treat these as product constraints, not suggestions:
@@ -78,11 +80,14 @@ Start here:
 - `README.md` for architecture, safety model, and system intent.
 
 Then load deeper docs by task:
+- `PIPELINE_EXECUTION_PLAN.md` for the pipeline controller, stage catalog, and `execute` mode contracts (canonical execution layer doc)
+- `EXECUTION_VALIDATION_PLAN.md` for Ralph V1 controller contracts, validation profiles, and override policy (reframed as primitive by `PIPELINE_EXECUTION_PLAN.md`)
 - `API_PLAN.md` for API design direction
 - `BULLMQ_SETUP_PLAN.md` for queue setup
 - `BULLMQ_PAUSE_RESUME_PLAN.md` for waiting/resume flow
-- `INVOCATION_TRIGGER_PLAN.md` for invocation behavior
+- `INVOCATION_TRIGGER_PLAN.md` for invocation behavior across CLI, Trello, Slack, MCP
 - `DOCKER_EXECUTION_PLAN.md` for execution environment strategy
+- `GITHUB_PR_PLAN.md` for the PR lifecycle state machine consumed by the pipeline's `pr-create` stage
 - `TRELLO_DELIVERY_PLAN.md` for Trello integration details
 
 ## PR / Delivery Expectations

@@ -1,11 +1,12 @@
 # Invocation Trigger Plan
 
-Scope: unified invocation path for Trello, Slack, and MCP.
+Scope: unified invocation path for Trello, Slack, MCP, and local CLI.
 
 ## Decisions
 
 - All external triggers normalize into one internal entrypoint: `createJobFromInvocation`.
-- Default mode is `investigate` across all sources unless `fix` is explicit.
+- Default mode is `investigate` across all sources unless `fix` or `execute` is explicit.
+- `execute` mode requires a plan reference (file path, repo path, or Trello card body). See `PIPELINE_EXECUTION_PLAN.md` for pipeline shape.
 - Trello trigger path supports:
   - assignment to Draftsman service user
   - explicit `@draftsman` comment mention
@@ -31,8 +32,9 @@ Scope: unified invocation path for Trello, Slack, and MCP.
     "id": "user_id",
     "display_name": "name"
   },
-  "mode": "investigate|fix",
+  "mode": "investigate|fix|execute",
   "ticket_url": "https://trello.com/c/...",
+  "plan_ref": "path/to/plan.md | .draftsman/plans/<id>.md | trello://card-id",
   "repo_hint": "owner/repo",
   "problem_statement": "required for plain_text_intake",
   "raw_context": "required for plain_text_intake",
@@ -42,6 +44,13 @@ Scope: unified invocation path for Trello, Slack, and MCP.
 ```
 
 ## Source Behavior (v1 -> v2)
+
+### Local CLI (v0)
+
+- `draftsman execute --plan <file>` or `draftsman investigate --ticket <url>` invoked from a developer shell.
+- Same envelope as webhook sources with `source: "cli"`.
+- Used for v0 bootstrapping and meta-testing against draftsman-no-9 itself.
+- Does not require signature verification or dedupe store (single-user local path).
 
 ### Trello (v1)
 

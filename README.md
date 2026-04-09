@@ -117,6 +117,14 @@ Default is plain Bun unless proven otherwise by operational complexity.
 - Respects all guardrails.
 - Stops and asks questions if required.
 
+### \`@draftsman execute <plan>\`
+
+- Takes a pre-authored plan file (design doc) and executes it through a linear pipeline.
+- Hard-blocks on any unchecked open questions in the plan before any code runs.
+- Runs per-task execution, de-slop and simplify hygiene passes, and a bounded pre-PR fix loop before opening a PR.
+- Plan source can be a local file, a `.draftsman/plans/` path, a `docs/plans/` path, or a Trello card body.
+- Pipeline shape and stage catalog: see `PIPELINE_EXECUTION_PLAN.md`.
+
 ---
 
 ## Repo Resolution
@@ -135,9 +143,19 @@ If repo resolution is ambiguous:
 
 ---
 
+## Execution Layer
+
+All three invocation modes compose onto a shared **pipeline controller** described in `PIPELINE_EXECUTION_PLAN.md`.
+
+- \`investigate\` is a one-stage pipeline (analyze → post findings).
+- \`fix\` is a short pipeline wrapping a single Ralph invocation plus pre-PR and PR creation.
+- \`execute\` is a multi-stage pipeline: ingest → open-questions gate → plan validation → per-task execution → de-slop → simplify → pre-PR → PR create.
+
+Ralph is a **bounded convergence primitive** invoked by pipeline stages that need it (per-task execution and pre-PR fixups), not a top-level execution path.
+
 ## Ralph Loop (Bounded Iteration)
 
-The Ralph loop is only used in \`fix\` mode.
+Ralph is used as a primitive by any pipeline stage that needs bounded convergence. In \`fix\` mode, the whole pipeline is effectively a single Ralph invocation plus PR wiring.
 
 Loop shape:
 
